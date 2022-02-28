@@ -257,14 +257,18 @@ function populate_master_data(worksheet, data) {
     worksheet.eachRow({ includeEmpty: false }, row => {
         row.eachCell(c => {
             if (c.value && typeof c.value === 'string' && c.value.includes('${') && !c.value.includes('${group') && !c.value.includes('${table')) {
-                // ${EmployeeName}
-                const feildID = c.value.substring(c.value.indexOf('{') + 1, c.value.indexOf('}'));
+                //ex: ${EmployeeName}
 
-                const re = new RegExp(`\\$\{${feildID}\}`, 'g');
-                const value = c.value.replace(re, data[feildID] || '');
+                const array = c.value.split('$');
+                for (let index = 1; index < array.length; index++) {
+                    const feildID = c.value.substring(c.value.indexOf('{') + 1, c.value.indexOf('}'));
 
-                display_cell_values(c, value);
-                // console.log(c.value)
+                    const re = new RegExp(`\\$\{${feildID}\}`, 'g');
+                    const value = c.value.replace(re, data[feildID] || '');
+
+                    display_cell_values(c, value);
+                    // console.log(c.value)
+                }
             }
         });
     });
@@ -285,7 +289,7 @@ function display_cell_values(cell, values) {
     //     Error: 10,
     //   }
 
-    // if (values === '80') {
+    // if (cell.value === '${DivisionID1} - ${DivisionName1}') {
     //     console.log('')
     // }
     // if (values == '90.916') {
