@@ -1,0 +1,2 @@
+- fix remove temp row
+- test Mau_BC_CompetencyCaNhan

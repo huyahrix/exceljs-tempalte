@@ -15,10 +15,10 @@ const excel = require('exceljs');
 
 const exceljs = {
     populate: async (template, data) => {
-        //  template = fs.readFileSync('./api/hooks/report/mock/Tempate01.xlsx');
-        template = fs.readFileSync('./mock/Force_Ranking_Tempalte.xlsx');
-        //  data = require('./mock/report_data.json');
-        data = require('./mock/Force_Ranking_data.json');
+        template = fs.readFileSync('./mock/Tempate01.xlsx');
+        // template = fs.readFileSync('./mock/Force_Ranking_Tempalte.xlsx');
+        data = require('./mock/report_data.json');
+        // data = require('./mock/Force_Ranking_data.json');
 
         const workbook = new excel.Workbook();
         await workbook.xlsx.load(template);
@@ -38,34 +38,6 @@ module.exports = exceljs;
 exceljs.populate();
 
 const helper = {
-    populate: (worksheet, data) => {
-        let pos;
-
-        populate_master_data(worksheet, data[0]);
-
-        const group_temp = helper.get_group_temp(worksheet);
-        if (group_temp.length) {
-            // [
-            //     { GroupFeildID: ['GoalPlanID'], row: Row, level: 0 },
-            //     { FeildID: ['GoalPlanID', 'GroupGoalID'], row: Row, level: 'last', table_temp: Row }
-            // ]
-            row_pos = group_temp[0].row.number + group_temp.length;
-            pos = populate_group_excel(worksheet, group_temp, row_pos, data);
-
-            // remove temp row
-            for (const rows_temp of group_temp) {
-                // worksheet.spliceRows(rows_temp.row.number + 1, rows_temp.row.number);
-                // worksheet.spliceRows(31, 30);  => bug
-                rows_temp.row.hidden = true;
-                if (rows_temp.table_temp) {
-                    rows_temp.table_temp.hidden = true;
-                }
-            }
-        } else {
-            pos = populate_table_excel(worksheet, data);
-        }
-        return pos;
-    },
     create_group_row: (worksheet, row, pos, data) => {
         const newRow = worksheet.insertRow(pos + 1, {});
 
@@ -203,8 +175,14 @@ function populate(worksheet, data) {
         for (const rows_temp of group_temp) {
             // worksheet.spliceRows(rows_temp.row.number + 1, rows_temp.row.number);
             // worksheet.spliceRows(31, 30);  => bug
+            rows_temp.row.eachCell(c => {
+                c.value = '';
+            });
             rows_temp.row.hidden = true;
             if (rows_temp.table_temp) {
+                rows_temp.table_temp.eachCell(c => {
+                    c.value = '';
+                });
                 rows_temp.table_temp.hidden = true;
             }
         }
@@ -314,6 +292,8 @@ function display_cell_values(cell, values) {
         case '0.00':
         case '0%':
         case '0.00%':
+        case `0.00\\%`:
+        case `0.0000\\%`:
             if (values) {
                 cell.value = parseFloat(values);
                 break;
