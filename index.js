@@ -16,6 +16,7 @@ const excel = require('exceljs');
 const exceljs = {
     populate: async (template, data) => {
         template = fs.readFileSync('./mock/Tempate01.xlsx');
+        //template = fs.readFileSync('./ReportName_1646205694408.xlsx');
         // template = fs.readFileSync('./mock/Force_Ranking_Tempalte.xlsx');
         data = require('./mock/report_data.json');
         // data = require('./mock/Force_Ranking_data.json');
@@ -35,134 +36,13 @@ const exceljs = {
 
 module.exports = exceljs;
 
-exceljs.populate();
-
-const helper = {
-    create_group_row: (worksheet, row, pos, data) => {
-        const newRow = worksheet.insertRow(pos + 1, {});
-
-        newRow.height = row.height;
-        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-            let newCell = newRow.getCell(colNumber);
-            if (cell.isMerged && cell.type === cell.Merge) {
-                return;
-            }
-            newCell.style = cell.style;
-            newCell.value = cell.value;
-        });
-
-        newRow.eachCell({ includeEmpty: true }, cell => {
-            if (cell.isMerged && cell.type === cell.Merge) {
-                return;
-            }
-            if (cell.value && typeof cell.value === 'string' && cell.value.includes('${group')) {
-                // ${group[GoalPlanID]:GoalPlanName}
-                const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
-                display_cell_values(cell, data[feildID]);
-            }
-
-            let height = 0;
-            if (cell.value && cell.alignment && cell.alignment.wrapText === true) {
-                height = String(cell.value).trim().length > 20 ? String(cell.value).trim().length * 2 / 3 : 20;
-            }
-            if (height > newRow.height) {
-                newRow.height = height;
-            }
-            return;
-        });
-
-        return newRow;
-    },
-    get_group_temp: (worksheet) => {
-        let group_rows_temp = [];
-        let arr_feildID = [];
-        worksheet.eachRow({ includeEmpty: false }, row => {
-            row.eachCell(c => {
-                if (group_rows_temp.find(r => r.row.number === c.row)) {
-                    return;
-                }
-
-                if (c.value && typeof c.value === 'string' && c.value.includes('${group')) {
-                    // ${group[GoalPlanID]:GoalPlanName}
-                    const feildID = c.value.substring(c.value.indexOf('[') + 1, c.value.indexOf(']'));
-                    arr_feildID.push(feildID);
-                    group_rows_temp.push({ row, GroupFeildID: [...arr_feildID], level: group_rows_temp.length });
-                }
-            });
-        });
-
-        if (group_rows_temp && group_rows_temp[0]) {
-            group_rows_temp[group_rows_temp.length - 1].level = 'last';
-
-            const table_temp = helper.get_table_temp(worksheet);
-            group_rows_temp[group_rows_temp.length - 1].table_temp = table_temp;
-        }
-
-        return group_rows_temp;
-    },
-    get_table_temp: (worksheet) => {
-        let table_temp;
-        worksheet.eachRow({ includeEmpty: false }, row => {
-            row.eachCell(c => {
-                if (table_temp) {
-                    return;
-                }
-
-                if (c.value && typeof c.value === 'string' && c.value.includes('${table:')) {
-                    // ${table:GoalName}
-                    table_temp = row;
-                }
-            });
-        });
-
-        return table_temp;
-    },
-    create_table_row: (worksheet, row, index, data) => {
-
-        const newRow = worksheet.insertRow(index + 1, {});
-
-        newRow.height = row.height;
-        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-            var newCell = newRow.getCell(colNumber);
-
-            if (cell.isMerged && cell.type === cell.Merge) {
-                return;
-            }
-            newCell.style = cell.style;
-            newCell.value = cell.value;
-
-        });
-
-        newRow.eachCell({ includeEmpty: true }, cell => {
-            if (cell.isMerged && cell.type === cell.Merge) {
-                return;
-            }
-            if (cell.value && typeof cell.value === 'string' && cell.value.includes('${table:')) {
-                const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
-                // cell.value = data[feildID] || '';
-                display_cell_values(cell, data[feildID]);
-            }
-
-            let height = 0;
-            if (cell.value && cell.alignment && cell.alignment.wrapText === true) {
-                height = String(cell.value).trim().length > 20 ? String(cell.value).trim().length * 2 / 3 : 20;
-            }
-            if (height > newRow.height) {
-                newRow.height = height;
-            }
-            return;
-        });
-
-        return newRow;
-    },
-};
+exceljs.populate().catch(err => console.error(err));
 
 function populate(worksheet, data) {
     let pos;
-
     populate_master_data(worksheet, data[0]);
 
-    const group_temp = helper.get_group_temp(worksheet);
+    const group_temp = get_group_temp(worksheet);
     if (group_temp.length) {
         // [
         //     { GroupFeildID: ['GoalPlanID'], row: Row, level: 0 },
@@ -170,28 +50,129 @@ function populate(worksheet, data) {
         // ]
         const row_pos = group_temp[0].row.number + group_temp.length;
         pos = populate_group_excel(worksheet, group_temp, row_pos, data);
-
-        // remove temp row
-        for (const rows_temp of group_temp) {
-            // worksheet.spliceRows(rows_temp.row.number + 1, rows_temp.row.number);
-            // worksheet.spliceRows(31, 30);  => bug
-            rows_temp.row.eachCell(c => {
-                c.value = '';
-            });
-            rows_temp.row.hidden = true;
-            if (rows_temp.table_temp) {
-                rows_temp.table_temp.eachCell(c => {
-                    c.value = '';
-                });
-                rows_temp.table_temp.hidden = true;
-            }
-        }
+        remove_temp_rows(worksheet, group_temp)
     } else {
         pos = populate_table_excel(worksheet, data);
     }
     return pos;
 }
+function create_group_row(worksheet, row, pos, data) {
+    const newRow = worksheet.insertRow(pos + 1, {});
 
+    newRow.height = row.height;
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        let newCell = newRow.getCell(colNumber);
+        if (cell.isMerged && cell.type === cell.Merge) {
+            return;
+        }
+        newCell.style = cell.style;
+        newCell.value = cell.value;
+    });
+
+    newRow.eachCell({ includeEmpty: true }, cell => {
+        if (cell.isMerged && cell.type === cell.Merge) {
+            return;
+        }
+        if (cell.value && typeof cell.value === 'string' && cell.value.includes('${group')) {
+            // ${group[GoalPlanID]:GoalPlanName}
+            const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
+            display_cell_values(cell, data[feildID]);
+        }
+
+        let height = 0;
+        if (cell.value && cell.alignment && cell.alignment.wrapText === true) {
+            height = String(cell.value).trim().length > 20 ? String(cell.value).trim().length * 2 / 3 : 20;
+        }
+        if (height > newRow.height) {
+            newRow.height = height;
+        }
+        return;
+    });
+
+    return newRow;
+}
+function get_group_temp(worksheet) {
+    let group_rows_temp = [];
+    let arr_feildID = [];
+    worksheet.eachRow({ includeEmpty: false }, row => {
+        row.eachCell(c => {
+            if (group_rows_temp.find(r => r.row.number === c.row)) {
+                return;
+            }
+
+            if (c.value && typeof c.value === 'string' && c.value.includes('${group')) {
+                // ${group[GoalPlanID]:GoalPlanName}
+                const feildID = c.value.substring(c.value.indexOf('[') + 1, c.value.indexOf(']'));
+                arr_feildID.push(feildID);
+                group_rows_temp.push({ row, GroupFeildID: [...arr_feildID], level: group_rows_temp.length });
+            }
+        });
+    });
+
+    if (group_rows_temp && group_rows_temp[0]) {
+        group_rows_temp[group_rows_temp.length - 1].level = 'last';
+
+        const table_temp = get_table_temp(worksheet);
+        group_rows_temp[group_rows_temp.length - 1].table_temp = table_temp;
+    }
+
+    return group_rows_temp;
+}
+function get_table_temp(worksheet) {
+    let table_temp;
+    worksheet.eachRow({ includeEmpty: false }, row => {
+        row.eachCell(c => {
+            if (table_temp) {
+                return;
+            }
+
+            if (c.value && typeof c.value === 'string' && c.value.includes('${table:')) {
+                // ${table:GoalName}
+                table_temp = row;
+            }
+        });
+    });
+
+    return table_temp;
+}
+function create_table_row(worksheet, row, index, data) {
+
+    const newRow = worksheet.insertRow(index + 1, {});
+
+    newRow.height = row.height;
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        var newCell = newRow.getCell(colNumber);
+
+        if (cell.isMerged && cell.type === cell.Merge) {
+            return;
+        }
+        newCell.style = cell.style;
+        newCell.value = cell.value;
+
+    });
+
+    newRow.eachCell({ includeEmpty: true }, cell => {
+        if (cell.isMerged && cell.type === cell.Merge) {
+            return;
+        }
+        if (cell.value && typeof cell.value === 'string' && cell.value.includes('${table:')) {
+            const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
+            // cell.value = data[feildID] || '';
+            display_cell_values(cell, data[feildID]);
+        }
+
+        let height = 0;
+        if (cell.value && cell.alignment && cell.alignment.wrapText === true) {
+            height = String(cell.value).trim().length > 20 ? String(cell.value).trim().length * 2 / 3 : 20;
+        }
+        if (height > newRow.height) {
+            newRow.height = height;
+        }
+        return;
+    });
+
+    return newRow;
+}
 function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0) {
     if (!rows_temps[group_level]) {
         return pos;
@@ -209,12 +190,12 @@ function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0)
 
         const group_data_row = group_data[key][0]; // fist object
 
-        let new_row = helper.create_group_row(worksheet, rows_temps[group_level].row, current_pos, group_data_row);
+        let new_row = create_group_row(worksheet, rows_temps[group_level].row, current_pos, group_data_row);
         current_pos = new_row.number;
 
         if (rows_temps[group_level].level === 'last') {
             for (const table_row_data of group_data[key]) {
-                const table_row = helper.create_table_row(worksheet, rows_temps[group_level].table_temp, current_pos, table_row_data);
+                const table_row = create_table_row(worksheet, rows_temps[group_level].table_temp, current_pos, table_row_data);
                 current_pos = table_row.number;
             }
         }
@@ -230,7 +211,6 @@ function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0)
 
     return current_pos;
 }
-
 function populate_master_data(worksheet, data) {
     worksheet.eachRow({ includeEmpty: false }, row => {
         row.eachCell(c => {
@@ -251,7 +231,6 @@ function populate_master_data(worksheet, data) {
         });
     });
 }
-
 function display_cell_values(cell, values) {
     // {
     //     Null: 0,
@@ -305,19 +284,63 @@ function display_cell_values(cell, values) {
     }
     return;
 }
-
 function populate_table_excel(worksheet, data) {
     let pos;
-    const table_temp = helper.get_table_temp(worksheet);
+    const table_temp = get_table_temp(worksheet);
     if (!table_temp) {
         return;
     }
 
     for (const row_data of data) {
-        const new_table_row = helper.create_table_row(worksheet, table_temp, table_temp.number, row_data);
+        const new_table_row = create_table_row(worksheet, table_temp, table_temp.number, row_data);
         pos = new_table_row.number;
     }
 
     table_temp.hidden = true;
     return pos;
+}
+function remove_temp_rows(worksheet, row_temps) {
+
+    if (!_.isArray(row_temps) || !row_temps.length) {
+        return;
+    }
+
+    let isMerged = false;
+    const pos = row_temps[0].row.number;
+    const rows = worksheet.getRows(pos, worksheet.lastRow.number - pos);
+
+    for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
+
+        if (isMerged) {
+            break;
+        }
+        row.eachCell(c => {
+            if (isMerged) {
+                return;
+            }
+
+            if (c.isMerged) {
+                isMerged = true;
+                return;
+            }
+        });
+    }
+
+    if (isMerged) {
+        for (const rows_temp of row_temps) {
+            rows_temp.row.eachCell(c => {
+                c.value = '';
+            });
+            rows_temp.row.hidden = true;
+            if (rows_temp.table_temp) {
+                rows_temp.table_temp.eachCell(c => {
+                    c.value = '';
+                });
+                rows_temp.table_temp.hidden = true;
+            }
+        }
+    } else {
+        worksheet.spliceRows(pos, row_temps.length);
+    }
 }
