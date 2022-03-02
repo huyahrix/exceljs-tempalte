@@ -44,11 +44,7 @@ function populate(worksheet, data) {
 
     const group_temp = get_group_temp(worksheet);
     if (group_temp.length) {
-        // [
-        //     { GroupFeildID: ['GoalPlanID'], row: Row, level: 0 },
-        //     { FeildID: ['GoalPlanID', 'GroupGoalID'], row: Row, level: 'last', table_temp: Row }
-        // ]
-        const row_pos = group_temp[0].row.number + group_temp.length;
+        const row_pos = group_temp[0].row.number + group_temp.length - 1;
         pos = populate_group_excel(worksheet, group_temp, row_pos, data);
         remove_temp_rows(worksheet, group_temp)
     } else {
@@ -110,10 +106,8 @@ function get_group_temp(worksheet) {
     });
 
     if (group_rows_temp && group_rows_temp[0]) {
-        group_rows_temp[group_rows_temp.length - 1].level = 'last';
-
         const table_temp = get_table_temp(worksheet);
-        group_rows_temp[group_rows_temp.length - 1].table_temp = table_temp;
+        group_rows_temp.push({ row: table_temp, GroupFeildID: [], level: 'table_row' });
     }
 
     return group_rows_temp;
@@ -193,9 +187,9 @@ function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0)
         let new_row = create_group_row(worksheet, rows_temps[group_level].row, current_pos, group_data_row);
         current_pos = new_row.number;
 
-        if (rows_temps[group_level].level === 'last') {
+        if (rows_temps[group_level + 1] && rows_temps[group_level + 1].level === 'table_row') {
             for (const table_row_data of group_data[key]) {
-                const table_row = create_table_row(worksheet, rows_temps[group_level].table_temp, current_pos, table_row_data);
+                const table_row = create_table_row(worksheet, rows_temps[group_level + 1].row, current_pos, table_row_data);
                 current_pos = table_row.number;
             }
         }
@@ -300,7 +294,6 @@ function populate_table_excel(worksheet, data) {
     return pos;
 }
 function remove_temp_rows(worksheet, row_temps) {
-
     if (!_.isArray(row_temps) || !row_temps.length) {
         return;
     }
