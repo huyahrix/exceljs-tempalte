@@ -15,13 +15,13 @@ const excel = require('exceljs');
 
 const exceljs = {
     populate: async (template, data) => {
-        // template = fs.readFileSync('./mock/Tempate01.xlsx');
-        template = fs.readFileSync('./mock/Mau_BC_CompetencyCaNhan_1.xlsx');
+        template = fs.readFileSync('./mock/Tempate01.xlsx');
+        // template = fs.readFileSync('./mock/Mau_BC_CompetencyCaNhan_1.xlsx');
         //template = fs.readFileSync('./ReportName_1646205694408.xlsx');
         // template = fs.readFileSync('./mock/Force_Ranking_Tempalte.xlsx');
 
-        // data = require('./mock/Tempate01_data.json');
-        data = require('./mock/Mau_BC_CompetencyCaNhan_1_data.json');
+        data = require('./mock/Tempate01_data.json');
+        // data = require('./mock/Mau_BC_CompetencyCaNhan_1_data.json');
         // data = require('./mock/Force_Ranking_data.json');
 
         const workbook = new excel.Workbook();
@@ -44,15 +44,47 @@ exceljs.populate().catch(err => console.error(err));
 function populate(worksheet, data) {
     populate_master_data(worksheet, data[0]);
 
+    // const group_temp = get_group_temp(worksheet);
+    const { rows_temp, type_temp } = get_row_temp(worksheet);
+
+    switch (type_temp) {
+        case 'group':
+            const row_pos = rows_temp[0].row.number + rows_temp.length - 1;
+            populate_group_excel(worksheet, rows_temp, row_pos, data);
+            break;
+
+        case 'table':
+            populate_table_excel(worksheet, rows_temp, data);
+            break;
+
+        default:
+            break;
+    }
+
+    // if (group_temp.length) {
+    //     const row_pos = group_temp[0].row.number + group_temp.length - 1;
+    //     populate_group_excel(worksheet, group_temp, row_pos, data);
+    //     // remove_temp_rows(worksheet, group_temp);
+    // } else {
+    //     populate_table_excel(worksheet, data);
+    // }
+
+    remove_temp_rows(worksheet, rows_temp);
+    return;
+}
+function get_row_temp(worksheet) {
+    let rows_temp = [];
+
     const group_temp = get_group_temp(worksheet);
     if (group_temp.length) {
-        const row_pos = group_temp[0].row.number + group_temp.length - 1;
-        populate_group_excel(worksheet, group_temp, row_pos, data);
-        remove_temp_rows(worksheet, group_temp)
-    } else {
-        populate_table_excel(worksheet, data);
+        return ({ rows_temp: group_temp, type_temp: 'group' });
     }
-    return;
+
+    const table_temp = get_table_temp(worksheet);
+    if (table_temp.length) {
+        return ({ rows_temp: table_temp, type_temp: 'table' });
+    }
+    return ({ rows_temp, type_temp: 'none' });
 }
 function create_group_row(worksheet, row, pos, data) {
     const newRow = worksheet.insertRow(pos + 1, {});
@@ -73,7 +105,6 @@ function create_group_row(worksheet, row, pos, data) {
         }
         if (cell.value && typeof cell.value === 'string' && cell.value.includes('${group')) {
             // ${group[GoalPlanID]:GoalPlanName}
-            // const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
             display_cell_values(cell, data, 'group');
         }
 
@@ -126,8 +157,7 @@ function get_table_temp(worksheet) {
 
             if (c.value && typeof c.value === 'string' && c.value.includes('${table:')) {
                 // ${table:GoalName}
-                // table_temp = row;
-                table_temp.push({ row })
+                table_temp.push({ row });
             }
         });
     });
@@ -155,8 +185,6 @@ function create_table_row(worksheet, row, index, data) {
             return;
         }
         if (cell.value && typeof cell.value === 'string' && cell.value.includes('${table:')) {
-            // const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
-            // cell.value = data[feildID] || '';
             display_cell_values(cell, data, 'table');
         }
 
@@ -184,10 +212,7 @@ function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0)
     });
 
     for (const key in group_data) {
-        // let level = rows_temps[group_level].level;
-        // console.log('level', level)
-
-        const group_data_row = group_data[key][0]; // fist object
+        const group_data_row = group_data[key][0];
 
         let new_row = create_group_row(worksheet, rows_temps[group_level].row, current_pos, group_data_row);
         current_pos = new_row.number;
@@ -230,15 +255,7 @@ function populate_master_data(worksheet, data) {
                     if (c.value && typeof c.value === 'string' && c.value.includes('${') && !c.value.includes('${group') && !c.value.includes('${table')) {
                         //ex: ${EmployeeName}
 
-                        // const array = c.value.split('$');
-                        // for (let index = 1; index < array.length; index++) {
-                        //     const feildID = c.value.substring(c.value.indexOf('{') + 1, c.value.indexOf('}'));
-
-                        //     const re = new RegExp(`\\$\{${feildID}\}`, 'g');
-                        //     const value = c.value.replace(re, data[feildID] || '');
-
                         display_cell_values(c, data, 'master');
-                        // console.log(c.value)
                         // }
                     }
                     break;
@@ -281,7 +298,7 @@ function display_cell_values(cell, data, key) {
                 let groupID = cell.value.substring(cell.value.indexOf('[') + 1, cell.value.indexOf(']'));
                 // reg_exp = new RegExp(`\\$\{group\[${groupID}\]\:${feildID}\}`, 'g');
                 // cell.value = cell.value.replace(reg_exp, data[feildID] || '');
-                cell.value = cell.value.replace(`\$\{group\[${groupID}\]\:${feildID}\}`, data[feildID] || '')
+                cell.value = cell.value.replace(`\$\{group\[${groupID}\]\:${feildID}\}`, data[feildID] || '');
                 break;
 
             case 'table':
@@ -319,25 +336,24 @@ function display_cell_values(cell, data, key) {
                 cell.value = 0;
                 break;
             default:
-                break
+                break;
         }
     }
     return;
 }
-function populate_table_excel(worksheet, data) {
+function populate_table_excel(worksheet, table_temp, data) {
     let pos;
-    const table_temp = get_table_temp(worksheet);
-    if (!_.isArray(table_temp) || !table_temp.length) {
-        return;
-    }
+    // const table_temp = get_table_temp(worksheet);
+    // if (!_.isArray(table_temp) || !table_temp.length) {
+    //     return;
+    // }
 
     for (const row_data of data) {
         const new_table_row = create_table_row(worksheet, table_temp[0].row, table_temp[0].row.number, row_data);
         pos = new_table_row.number;
     }
 
-    // table_temp.hidden = true;
-    remove_temp_rows(worksheet, table_temp)
+    // remove_temp_rows(worksheet, table_temp);
     return pos;
 }
 function remove_temp_rows(worksheet, row_temps) {

@@ -1,3 +1,1 @@
-- fix remove temp row
-- display value table row
 - test Mau_BC_CompetencyCaNhan
