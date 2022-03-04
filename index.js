@@ -15,10 +15,13 @@ const excel = require('exceljs');
 
 const exceljs = {
     populate: async (template, data) => {
-        template = fs.readFileSync('./mock/Tempate01.xlsx');
+        // template = fs.readFileSync('./mock/Tempate01.xlsx');
+        template = fs.readFileSync('./mock/Mau_BC_CompetencyCaNhan_1.xlsx');
         //template = fs.readFileSync('./ReportName_1646205694408.xlsx');
         // template = fs.readFileSync('./mock/Force_Ranking_Tempalte.xlsx');
-        data = require('./mock/report_data.json');
+
+        // data = require('./mock/Tempate01_data.json');
+        data = require('./mock/Mau_BC_CompetencyCaNhan_1_data.json');
         // data = require('./mock/Force_Ranking_data.json');
 
         const workbook = new excel.Workbook();
@@ -39,18 +42,17 @@ module.exports = exceljs;
 exceljs.populate().catch(err => console.error(err));
 
 function populate(worksheet, data) {
-    let pos;
     populate_master_data(worksheet, data[0]);
 
     const group_temp = get_group_temp(worksheet);
     if (group_temp.length) {
         const row_pos = group_temp[0].row.number + group_temp.length - 1;
-        pos = populate_group_excel(worksheet, group_temp, row_pos, data);
+        populate_group_excel(worksheet, group_temp, row_pos, data);
         remove_temp_rows(worksheet, group_temp)
     } else {
-        pos = populate_table_excel(worksheet, data);
+        populate_table_excel(worksheet, data);
     }
-    return pos;
+    return;
 }
 function create_group_row(worksheet, row, pos, data) {
     const newRow = worksheet.insertRow(pos + 1, {});
@@ -71,8 +73,8 @@ function create_group_row(worksheet, row, pos, data) {
         }
         if (cell.value && typeof cell.value === 'string' && cell.value.includes('${group')) {
             // ${group[GoalPlanID]:GoalPlanName}
-            const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
-            display_cell_values(cell, data[feildID]);
+            // const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
+            display_cell_values(cell, data, 'group');
         }
 
         let height = 0;
@@ -107,22 +109,25 @@ function get_group_temp(worksheet) {
 
     if (group_rows_temp && group_rows_temp[0]) {
         const table_temp = get_table_temp(worksheet);
-        group_rows_temp.push({ row: table_temp, GroupFeildID: [], level: 'table_row' });
+        if (table_temp.length) {
+            group_rows_temp.push({ row: table_temp[0].row, GroupFeildID: [], level: 'child_row' });
+        }
     }
 
     return group_rows_temp;
 }
 function get_table_temp(worksheet) {
-    let table_temp;
+    let table_temp = [];
     worksheet.eachRow({ includeEmpty: false }, row => {
         row.eachCell(c => {
-            if (table_temp) {
+            if (table_temp.length) {
                 return;
             }
 
             if (c.value && typeof c.value === 'string' && c.value.includes('${table:')) {
                 // ${table:GoalName}
-                table_temp = row;
+                // table_temp = row;
+                table_temp.push({ row })
             }
         });
     });
@@ -150,9 +155,9 @@ function create_table_row(worksheet, row, index, data) {
             return;
         }
         if (cell.value && typeof cell.value === 'string' && cell.value.includes('${table:')) {
-            const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
+            // const feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
             // cell.value = data[feildID] || '';
-            display_cell_values(cell, data[feildID]);
+            display_cell_values(cell, data, 'table');
         }
 
         let height = 0;
@@ -187,7 +192,7 @@ function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0)
         let new_row = create_group_row(worksheet, rows_temps[group_level].row, current_pos, group_data_row);
         current_pos = new_row.number;
 
-        if (rows_temps[group_level + 1] && rows_temps[group_level + 1].level === 'table_row') {
+        if (rows_temps[group_level + 1] && rows_temps[group_level + 1].level === 'child_row') {
             for (const table_row_data of group_data[key]) {
                 const table_row = create_table_row(worksheet, rows_temps[group_level + 1].row, current_pos, table_row_data);
                 current_pos = table_row.number;
@@ -208,24 +213,42 @@ function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0)
 function populate_master_data(worksheet, data) {
     worksheet.eachRow({ includeEmpty: false }, row => {
         row.eachCell(c => {
-            if (c.value && typeof c.value === 'string' && c.value.includes('${') && !c.value.includes('${group') && !c.value.includes('${table')) {
-                //ex: ${EmployeeName}
+            switch (c.type) {
+                case 8: //RichText
+                    if (c.value && c.value.richText && _.isArray(c.value.richText)) {
+                        for (const iterator of c.value.richText) {
+                            if (iterator.text && typeof iterator.text === 'string' && iterator.text.includes('${') && !iterator.text.includes('${group') && !iterator.text.includes('${table')) {
+                                // iterator.text = 'iterator.text';
+                                display_cell_values(iterator, data, 'master-richText');
+                            }
+                        }
+                        break;
+                    }
+                    c.value = 0;
+                    break;
+                default:
+                    if (c.value && typeof c.value === 'string' && c.value.includes('${') && !c.value.includes('${group') && !c.value.includes('${table')) {
+                        //ex: ${EmployeeName}
 
-                const array = c.value.split('$');
-                for (let index = 1; index < array.length; index++) {
-                    const feildID = c.value.substring(c.value.indexOf('{') + 1, c.value.indexOf('}'));
+                        // const array = c.value.split('$');
+                        // for (let index = 1; index < array.length; index++) {
+                        //     const feildID = c.value.substring(c.value.indexOf('{') + 1, c.value.indexOf('}'));
 
-                    const re = new RegExp(`\\$\{${feildID}\}`, 'g');
-                    const value = c.value.replace(re, data[feildID] || '');
+                        //     const re = new RegExp(`\\$\{${feildID}\}`, 'g');
+                        //     const value = c.value.replace(re, data[feildID] || '');
 
-                    display_cell_values(c, value);
-                    // console.log(c.value)
-                }
+                        display_cell_values(c, data, 'master');
+                        // console.log(c.value)
+                        // }
+                    }
+                    break;
             }
         });
     });
 }
-function display_cell_values(cell, values) {
+function display_cell_values(cell, data, key) {
+
+    // Excel.ValueType
     // {
     //     Null: 0,
     //     Merge: 1,
@@ -239,58 +262,82 @@ function display_cell_values(cell, values) {
     //     Boolean: 9,
     //     Error: 10,
     //   }
+    // ------------------------------
 
-    // if (cell.value === '${DivisionID1} - ${DivisionName1}') {
-    //     console.log('')
-    // }
-    // if (values == '90.916') {
-    //     console.log('')
-    // }
+    let reg_exp;
+    let feildID;
+    let array = (key === 'master-richText') ? cell.text.split('$') : cell.value.split('$');
 
-    // switch (cell.type) {
-    //     case 2:
-    //         c.numFmt = '0.00'
-    //         if (values) {
-    //             cell.value = parseFloat(values);
-    //             break;
-    //         }
-    //         cell.value = 0;
-    //         break;
-    //     default:
-    //         cell.value = values;
-    // }
-
-    switch (cell.numFmt) {
-        case '0':
-        case '0.00':
-        case '0%':
-        case '0.00%':
-        case `0.00\\%`:
-        case `0.0000\\%`:
-            if (values) {
-                cell.value = parseFloat(values);
+    for (let index = 1; index < array.length; index++) {
+        switch (key) {
+            case 'master':
+                feildID = cell.value.substring(cell.value.indexOf('{') + 1, cell.value.indexOf('}'));
+                reg_exp = new RegExp(`\\$\{${feildID}\}`, 'g');
+                cell.value = cell.value.replace(reg_exp, data[feildID] || '');
                 break;
-            }
-            cell.value = 0;
-            break;
-        default:
-            cell.value = values || '';
+
+            case 'group':
+                feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
+                let groupID = cell.value.substring(cell.value.indexOf('[') + 1, cell.value.indexOf(']'));
+                // reg_exp = new RegExp(`\\$\{group\[${groupID}\]\:${feildID}\}`, 'g');
+                // cell.value = cell.value.replace(reg_exp, data[feildID] || '');
+                cell.value = cell.value.replace(`\$\{group\[${groupID}\]\:${feildID}\}`, data[feildID] || '')
+                break;
+
+            case 'table':
+                feildID = cell.value.substring(cell.value.indexOf(':') + 1, cell.value.indexOf('}'));
+                reg_exp = new RegExp(`\\$\{table:${feildID}\}`, 'g');
+                cell.value = cell.value.replace(reg_exp, data[feildID] || '');
+                break;
+
+            case 'master-richText':
+                feildID = cell.text.substring(cell.text.indexOf('{') + 1, cell.text.indexOf('}'));
+                reg_exp = new RegExp(`\\$\{${feildID}\}`, 'g');
+                cell.text = cell.text.replace(reg_exp, data[feildID] || '');
+
+                continue;
+
+            default:
+                break;
+        }
+
+        switch (cell.numFmt) {
+            case '0':
+            case '0.0':
+            case '0.00':
+            case '0.000':
+            case '0.0000':
+            case '0%':
+            case '0.0%':
+            case '0.00%':
+            case `0.00\\%`:
+            case `0.0000\\%`:
+                if (cell.value && !isNaN(cell.value)) {
+                    cell.value = parseFloat(cell.value);
+                    break;
+                }
+                cell.value = 0;
+                break;
+            default:
+                break
+        }
     }
     return;
 }
 function populate_table_excel(worksheet, data) {
     let pos;
     const table_temp = get_table_temp(worksheet);
-    if (!table_temp) {
+    if (!_.isArray(table_temp) || !table_temp.length) {
         return;
     }
 
     for (const row_data of data) {
-        const new_table_row = create_table_row(worksheet, table_temp, table_temp.number, row_data);
+        const new_table_row = create_table_row(worksheet, table_temp[0].row, table_temp[0].row.number, row_data);
         pos = new_table_row.number;
     }
 
-    table_temp.hidden = true;
+    // table_temp.hidden = true;
+    remove_temp_rows(worksheet, table_temp)
     return pos;
 }
 function remove_temp_rows(worksheet, row_temps) {
