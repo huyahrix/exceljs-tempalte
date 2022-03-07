@@ -33,7 +33,7 @@ const exceljs = {
         populate(worksheet, data);
 
         await workbook.xlsx.writeFile('ReportName_' + Date.now() + '.xlsx');
-        console.log('done');
+        console.log('done ');
 
         // return await workbook.xlsx.writeBuffer();
     }
