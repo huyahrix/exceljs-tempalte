@@ -15,11 +15,13 @@ const excel = require('exceljs');
 
 const exceljs = {
     populate: async (template, data) => {
+        // template = fs.readFileSync('./mock/TA_PHEPNAM_Template.xlsx');
         template = fs.readFileSync('./mock/Tempate01.xlsx');
         // template = fs.readFileSync('./mock/Mau_BC_CompetencyCaNhan_1.xlsx');
         //template = fs.readFileSync('./ReportName_1646205694408.xlsx');
         // template = fs.readFileSync('./mock/Force_Ranking_Tempalte.xlsx');
 
+        // data = require('./mock/TA_PHEPNAM_Data.json');
         data = require('./mock/Tempate01_data.json');
         // data = require('./mock/Mau_BC_CompetencyCaNhan_1_data.json');
         // data = require('./mock/Force_Ranking_data.json');
@@ -44,9 +46,7 @@ exceljs.populate().catch(err => console.error(err));
 function populate(worksheet, data) {
     populate_master_data(worksheet, data[0]);
 
-    // const group_temp = get_group_temp(worksheet);
     const { rows_temp, type_temp } = get_row_temp(worksheet);
-
     switch (type_temp) {
         case 'group':
             const row_pos = rows_temp[0].row.number + rows_temp.length - 1;
@@ -60,14 +60,6 @@ function populate(worksheet, data) {
         default:
             break;
     }
-
-    // if (group_temp.length) {
-    //     const row_pos = group_temp[0].row.number + group_temp.length - 1;
-    //     populate_group_excel(worksheet, group_temp, row_pos, data);
-    //     // remove_temp_rows(worksheet, group_temp);
-    // } else {
-    //     populate_table_excel(worksheet, data);
-    // }
 
     remove_temp_rows(worksheet, rows_temp);
     return;
@@ -85,6 +77,79 @@ function get_row_temp(worksheet) {
         return ({ rows_temp: table_temp, type_temp: 'table' });
     }
     return ({ rows_temp, type_temp: 'none' });
+}
+function populate_master_data(worksheet, data) {
+    worksheet.eachRow({ includeEmpty: false }, row => {
+        row.eachCell(c => {
+            switch (c.type) {
+                case 8: //RichText
+                    if (c.value && c.value.richText && _.isArray(c.value.richText)) {
+                        for (const iterator of c.value.richText) {
+                            if (iterator.text && typeof iterator.text === 'string' && iterator.text.includes('${') && !iterator.text.includes('${group') && !iterator.text.includes('${table')) {
+                                display_cell_values(iterator, data, 'master-richText');
+                            }
+                        }
+                        break;
+                    }
+                    c.value = 0;
+                    break;
+                default:
+                    if (c.value && typeof c.value === 'string' && c.value.includes('${') && !c.value.includes('${group') && !c.value.includes('${table')) {
+                        //ex: ${EmployeeName}
+                        display_cell_values(c, data, 'master');
+                    }
+                    break;
+            }
+        });
+    });
+}
+function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0) {
+    if (!rows_temps[group_level]) {
+        return pos;
+    }
+    let current_pos = pos;
+
+    const group_data = _.groupBy(data, (e) => {
+        const group = rows_temps[group_level].GroupFeildID.map(m => e[m]);
+        return group;
+    });
+
+    for (const key in group_data) {
+        const group_data_row = group_data[key][0];
+
+        let new_row = create_group_row(worksheet, rows_temps[group_level].row, current_pos, group_data_row);
+        current_pos = new_row.number;
+
+        if (rows_temps[group_level + 1] && rows_temps[group_level + 1].level === 'child_row') {
+            for (const table_row_data of group_data[key]) {
+                const table_row = create_table_row(worksheet, rows_temps[group_level + 1].row, current_pos, table_row_data);
+                current_pos = table_row.number;
+            }
+        }
+        else {
+            current_pos = populate_group_excel(worksheet, rows_temps, current_pos, group_data[key], group_level += 1); // next level
+        }
+
+        if (key.includes(',')) {
+            continue;
+        }
+        group_level = 0;
+    }
+
+    return current_pos;
+}
+function populate_table_excel(worksheet, table_temp, data) {
+    let pos;
+    if (!_.isArray(table_temp) || !table_temp.length) {
+        return;
+    }
+
+    for (const row_data of data) {
+        const new_table_row = create_table_row(worksheet, table_temp[0].row, table_temp[0].row.number, row_data);
+        pos = new_table_row.number;
+    }
+
+    return pos;
 }
 function create_group_row(worksheet, row, pos, data) {
     const newRow = worksheet.insertRow(pos + 1, {});
@@ -106,6 +171,42 @@ function create_group_row(worksheet, row, pos, data) {
         if (cell.value && typeof cell.value === 'string' && cell.value.includes('${group')) {
             // ${group[GoalPlanID]:GoalPlanName}
             display_cell_values(cell, data, 'group');
+        }
+
+        let height = 0;
+        if (cell.value && cell.alignment && cell.alignment.wrapText === true) {
+            height = String(cell.value).trim().length > 20 ? String(cell.value).trim().length * 2 / 3 : 20;
+        }
+        if (height > newRow.height) {
+            newRow.height = height;
+        }
+        return;
+    });
+
+    return newRow;
+}
+function create_table_row(worksheet, row, index, data) {
+
+    const newRow = worksheet.insertRow(index + 1, {});
+
+    newRow.height = row.height;
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        var newCell = newRow.getCell(colNumber);
+
+        if (cell.isMerged && cell.type === cell.Merge) {
+            return;
+        }
+        newCell.style = cell.style;
+        newCell.value = cell.value;
+
+    });
+
+    newRow.eachCell({ includeEmpty: true }, cell => {
+        if (cell.isMerged && cell.type === cell.Merge) {
+            return;
+        }
+        if (cell.value && typeof cell.value === 'string' && cell.value.includes('${table:')) {
+            display_cell_values(cell, data, 'table');
         }
 
         let height = 0;
@@ -163,105 +264,6 @@ function get_table_temp(worksheet) {
     });
 
     return table_temp;
-}
-function create_table_row(worksheet, row, index, data) {
-
-    const newRow = worksheet.insertRow(index + 1, {});
-
-    newRow.height = row.height;
-    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        var newCell = newRow.getCell(colNumber);
-
-        if (cell.isMerged && cell.type === cell.Merge) {
-            return;
-        }
-        newCell.style = cell.style;
-        newCell.value = cell.value;
-
-    });
-
-    newRow.eachCell({ includeEmpty: true }, cell => {
-        if (cell.isMerged && cell.type === cell.Merge) {
-            return;
-        }
-        if (cell.value && typeof cell.value === 'string' && cell.value.includes('${table:')) {
-            display_cell_values(cell, data, 'table');
-        }
-
-        let height = 0;
-        if (cell.value && cell.alignment && cell.alignment.wrapText === true) {
-            height = String(cell.value).trim().length > 20 ? String(cell.value).trim().length * 2 / 3 : 20;
-        }
-        if (height > newRow.height) {
-            newRow.height = height;
-        }
-        return;
-    });
-
-    return newRow;
-}
-function populate_group_excel(worksheet, rows_temps, pos, data, group_level = 0) {
-    if (!rows_temps[group_level]) {
-        return pos;
-    }
-    let current_pos = pos;
-
-    const group_data = _.groupBy(data, (e) => {
-        const group = rows_temps[group_level].GroupFeildID.map(m => e[m]);
-        return group;
-    });
-
-    for (const key in group_data) {
-        const group_data_row = group_data[key][0];
-
-        let new_row = create_group_row(worksheet, rows_temps[group_level].row, current_pos, group_data_row);
-        current_pos = new_row.number;
-
-        if (rows_temps[group_level + 1] && rows_temps[group_level + 1].level === 'child_row') {
-            for (const table_row_data of group_data[key]) {
-                const table_row = create_table_row(worksheet, rows_temps[group_level + 1].row, current_pos, table_row_data);
-                current_pos = table_row.number;
-            }
-        }
-        else {
-            current_pos = populate_group_excel(worksheet, rows_temps, current_pos, group_data[key], group_level += 1); // next level
-        }
-
-        if (key.includes(',')) {
-            continue;
-        }
-        group_level = 0;
-    }
-
-    return current_pos;
-}
-function populate_master_data(worksheet, data) {
-    worksheet.eachRow({ includeEmpty: false }, row => {
-        row.eachCell(c => {
-            switch (c.type) {
-                case 8: //RichText
-                    if (c.value && c.value.richText && _.isArray(c.value.richText)) {
-                        for (const iterator of c.value.richText) {
-                            if (iterator.text && typeof iterator.text === 'string' && iterator.text.includes('${') && !iterator.text.includes('${group') && !iterator.text.includes('${table')) {
-                                // iterator.text = 'iterator.text';
-                                display_cell_values(iterator, data, 'master-richText');
-                            }
-                        }
-                        break;
-                    }
-                    c.value = 0;
-                    break;
-                default:
-                    if (c.value && typeof c.value === 'string' && c.value.includes('${') && !c.value.includes('${group') && !c.value.includes('${table')) {
-                        //ex: ${EmployeeName}
-
-                        display_cell_values(c, data, 'master');
-                        // }
-                    }
-                    break;
-            }
-        });
-    });
 }
 function display_cell_values(cell, data, key) {
 
@@ -340,21 +342,6 @@ function display_cell_values(cell, data, key) {
         }
     }
     return;
-}
-function populate_table_excel(worksheet, table_temp, data) {
-    let pos;
-    // const table_temp = get_table_temp(worksheet);
-    // if (!_.isArray(table_temp) || !table_temp.length) {
-    //     return;
-    // }
-
-    for (const row_data of data) {
-        const new_table_row = create_table_row(worksheet, table_temp[0].row, table_temp[0].row.number, row_data);
-        pos = new_table_row.number;
-    }
-
-    // remove_temp_rows(worksheet, table_temp);
-    return pos;
 }
 function remove_temp_rows(worksheet, row_temps) {
     if (!_.isArray(row_temps) || !row_temps.length) {
