@@ -10,38 +10,35 @@
 
 /* eslint-disable camelcase */
 const _ = require('lodash');
-const fs = require('fs');
+
 const excel = require('exceljs');
+const ExceljsTemplateError = require('./ExceljsTemplateError');
 
 const exceljs = {
     populate: async (template, data) => {
-        // template = fs.readFileSync('./mock/TA_PHEPNAM_Template.xlsx');
-        template = fs.readFileSync('./mock/Tempate01.xlsx');
-        // template = fs.readFileSync('./mock/Mau_BC_CompetencyCaNhan_1.xlsx');
-        //template = fs.readFileSync('./ReportName_1646205694408.xlsx');
-        // template = fs.readFileSync('./mock/Force_Ranking_Tempalte.xlsx');
-
-        // data = require('./mock/TA_PHEPNAM_Data.json');
-        data = require('./mock/Tempate01_data.json');
-        // data = require('./mock/Mau_BC_CompetencyCaNhan_1_data.json');
-        // data = require('./mock/Force_Ranking_data.json');
+        if (!(template instanceof Buffer)) {
+            throw new ExceljsTemplateError(
+                'Excel template expected as Buffer.',
+                ExceljsTemplateError.TYPE_INPUT,
+            );
+        }
+        if (!(data instanceof Array)) {
+            throw new ExceljsTemplateError(
+                'Data expected as Array.',
+                ExceljsTemplateError.TYPE_INPUT,
+            );
+        }
 
         const workbook = new excel.Workbook();
         await workbook.xlsx.load(template);
         const worksheet = workbook.worksheets[0];
 
         populate(worksheet, data);
-
-        await workbook.xlsx.writeFile('ReportName_' + Date.now() + '.xlsx');
-        console.log('done ');
-
-        // return await workbook.xlsx.writeBuffer();
+        return await workbook.xlsx.writeBuffer();
     }
 };
 
 module.exports = exceljs;
-
-exceljs.populate().catch(err => console.error(err));
 
 function populate(worksheet, data) {
     populate_master_data(worksheet, data[0]);

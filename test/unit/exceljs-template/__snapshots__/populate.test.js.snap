@@ -1,0 +1,5 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`exceljs-template populate expects data to be Array 1`] = `"Data expected as Array."`;
+
+exports[`exceljs-template populate expects excel template to be Buffer 1`] = `"Excel template expected as Buffer."`;
